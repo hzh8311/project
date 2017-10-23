@@ -3,6 +3,12 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# data dir
+data/
+
+# trainging script
+*.pbs
+
 # Torch Models
 *.pkl
 

@@ -1,11 +1,14 @@
+import os
 import sys
 import torch
-import visdom
+# import visdom
 import argparse
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
+import matplotlib
+matplotlib.use('Agg')
 
 from torch.autograd import Variable
 from torch.utils import data
@@ -26,20 +29,21 @@ def train(args):
     trainloader = data.DataLoader(loader, batch_size=args.batch_size, num_workers=4, shuffle=True)
 
     # Setup visdom for visualization
-    vis = visdom.Visdom()
+    # vis = visdom.Visdom()
 
-    loss_window = vis.line(X=torch.zeros((1,)).cpu(),
-                           Y=torch.zeros((1)).cpu(),
-                           opts=dict(xlabel='minibatches',
-                                     ylabel='Loss',
-                                     title='Training Loss',
-                                     legend=['Loss']))
+    # loss_window = vis.line(X=torch.zeros((1,)).cpu(),
+    #                        Y=torch.zeros((1)).cpu(),
+    #                        opts=dict(xlabel='minibatches',
+    #                                  ylabel='Loss',
+    #                                  title='Training Loss',
+    #                                  legend=['Loss']))
 
     # Setup Model
     model = get_model(args.arch, n_classes)
 
     if torch.cuda.is_available():
         model.cuda(0)
+        weight = torch.cuda.FloatTensor([0.00044, 0.92276, 0.07680])
         test_image, test_segmap = loader[0]
         test_image = Variable(test_image.unsqueeze(0).cuda(0))
     else:
@@ -59,20 +63,20 @@ def train(args):
 
             iter = len(trainloader)*epoch + i
             poly_lr_scheduler(optimizer, args.l_rate, iter)
-            
+
             optimizer.zero_grad()
             outputs = model(images)
 
-            loss = cross_entropy2d(outputs, labels)
+            loss = cross_entropy2d(outputs, labels, weight=weight)
 
             loss.backward()
             optimizer.step()
 
-            vis.line(
-                X=torch.ones((1, 1)).cpu() * i,
-                Y=torch.Tensor([loss.data[0]]).unsqueeze(0).cpu(),
-                win=loss_window,
-                update='append')
+            # vis.line(
+            #     X=torch.ones((1, 1)).cpu() * i,
+            #     Y=torch.Tensor([loss.data[0]]).unsqueeze(0).cpu(),
+            #     win=loss_window,
+            #     update='append')
 
             if (i+1) % 20 == 0:
                 print("Epoch [%d/%d] Loss: %.4f" % (epoch+1, args.n_epoch, loss.data[0]))
@@ -84,26 +88,27 @@ def train(args):
         # vis.image(test_image[0].cpu().data.numpy(), opts=dict(title='Input' + str(epoch)))
         # vis.image(np.transpose(target, [2,0,1]), opts=dict(title='GT' + str(epoch)))
         # vis.image(np.transpose(predicted, [2,0,1]), opts=dict(title='Predicted' + str(epoch)))
-
-        torch.save(model, "{}_{}_{}_{}.pkl".format(args.arch, args.dataset, args.feature_scale, epoch))
+        if not os.path.exists('checkpoints'):
+            os.makedirs('checkpoints')
+        torch.save(model, "checkpoints/{}_{}_{}_{}.pkl".format(args.arch, args.dataset, args.feature_scale, epoch))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Hyperparams')
-    parser.add_argument('--arch', nargs='?', type=str, default='fcn8s', 
+    parser.add_argument('--arch', nargs='?', type=str, default='fcn8s',
                         help='Architecture to use [\'fcn8s, unet, segnet etc\']')
-    parser.add_argument('--dataset', nargs='?', type=str, default='pascal', 
+    parser.add_argument('--dataset', nargs='?', type=str, default='pascal',
                         help='Dataset to use [\'pascal, camvid, ade20k etc\']')
-    parser.add_argument('--img_rows', nargs='?', type=int, default=256, 
+    parser.add_argument('--img_rows', nargs='?', type=int, default=300,
                         help='Height of the input image')
-    parser.add_argument('--img_cols', nargs='?', type=int, default=256, 
+    parser.add_argument('--img_cols', nargs='?', type=int, default=500,
                         help='Height of the input image')
-    parser.add_argument('--n_epoch', nargs='?', type=int, default=100, 
+    parser.add_argument('--n_epoch', nargs='?', type=int, default=100,
                         help='# of the epochs')
-    parser.add_argument('--batch_size', nargs='?', type=int, default=1, 
+    parser.add_argument('--batch_size', nargs='?', type=int, default=8,
                         help='Batch Size')
-    parser.add_argument('--l_rate', nargs='?', type=float, default=1e-5, 
+    parser.add_argument('--l_rate', nargs='?', type=float, default=1e-5,
                         help='Learning Rate')
-    parser.add_argument('--feature_scale', nargs='?', type=int, default=1, 
-                        help='Divider for # of features to use')    
+    parser.add_argument('--feature_scale', nargs='?', type=int, default=1,
+                        help='Divider for # of features to use')
     args = parser.parse_args()
     train(args)

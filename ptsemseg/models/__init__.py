@@ -19,8 +19,8 @@ def get_model(name, n_classes):
     elif name == 'segnet':
         model = model(n_classes=n_classes,
                       is_unpooling=True)
-        vgg16 = models.vgg16(pretrained=True)
-        model.init_vgg16_params(vgg16)
+        vgg16 = models.vgg16(pretrained=False)
+        # model.init_vgg16_params(vgg16)
 
     elif name == 'unet':
         model = model(n_classes=n_classes,

@@ -20,5 +20,8 @@
   "mit_sceneparsing_benchmark":
   {
     "data_path": "/home/ubuntu/DATA/ADEChallengeData2016/"
-  }
+  },
+  
+  "ustc":
+  {"data_path":"/data5/huangzh/project/data/"}
 }

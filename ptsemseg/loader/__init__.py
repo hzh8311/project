@@ -1,9 +1,10 @@
 import json
 
-from ptsemseg.loader.pascal_voc_loader import pascalVOCLoader
-from ptsemseg.loader.camvid_loader import camvidLoader
-from ptsemseg.loader.ade20k_loader import ADE20KLoader
-from ptsemseg.loader.mit_sceneparsing_benchmark_loader import MITSceneParsingBenchmarkLoader
+# from ptsemseg.loader.pascal_voc_loader import pascalVOCLoader
+# from ptsemseg.loader.camvid_loader import camvidLoader
+from ptsemseg.loader.ustc_loader import ustcLoader
+# from ptsemseg.loader.ade20k_loader import ADE20KLoader
+# from ptsemseg.loader.mit_sceneparsing_benchmark_loader import MITSceneParsingBenchmarkLoader
 
 
 def get_loader(name):
@@ -12,10 +13,11 @@ def get_loader(name):
     :param name:
     """
     return {
-        'pascal': pascalVOCLoader,
-        'camvid': camvidLoader,
-        'ade20k': ADE20KLoader,
-        'mit_sceneparsing_benchmark': MITSceneParsingBenchmarkLoader,
+        # 'pascal': pascalVOCLoader,
+        # 'camvid': camvidLoader,
+        'ustc': ustcLoader,
+        # 'ade20k': ADE20KLoader,
+        # 'mit_sceneparsing_benchmark': MITSceneParsingBenchmarkLoader,
     }[name]
 
 

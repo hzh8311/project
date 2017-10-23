@@ -7,7 +7,8 @@ import torch.nn as nn
 import scipy.misc as misc
 import torch.nn.functional as F
 import torchvision.models as models
-
+import matplotlib
+matplotlib.use('Agg')
 from torch.autograd import Variable
 from torch.utils import data
 from tqdm import tqdm
@@ -18,21 +19,23 @@ from ptsemseg.metrics import scores
 def test(args):
 
     # Setup image
-    print "Read Input Image from : {}".format(args.img_path) 
+    print "Read Input Image from : {}".format(args.img_path)
     img = misc.imread(args.img_path)
 
     data_loader = get_loader(args.dataset)
     data_path = get_data_path(args.dataset)
-    loader = data_loader(data_path, is_transform=True)
+    loader = data_loader(data_path, is_transform=True, img_size=(300, 500))
     n_classes = loader.n_classes
 
     img = img[:, :, ::-1]
     img = img.astype(np.float64)
     img -= loader.mean
-    img = misc.imresize(img, (loader.img_size[0], loader.img_size[1]))
-    img = img.astype(float) / 255.0
+    img /= loader.std
+    if (img.shape[0], img.shape[1]) != loader.img_size:
+        img = misc.imresize(img, (loader.img_size[0], loader.img_size[1]))
+        img = img.astype(float) / 255.0
     # NHWC -> NCWH
-    img = img.transpose(2, 0, 1) 
+    img = img.transpose(2, 0, 1)
     img = np.expand_dims(img, 0)
     img = torch.from_numpy(img).float()
 
@@ -51,17 +54,17 @@ def test(args):
     decoded = loader.decode_segmap(pred[0])
     print np.unique(pred)
     misc.imsave(args.out_path, decoded)
-    print "Segmentation Mask Saved at: {}".format(args.out_path) 
+    print "Segmentation Mask Saved at: {}".format(args.out_path)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Params')
-    parser.add_argument('--model_path', nargs='?', type=str, default='fcn8s_pascal_1_26.pkl', 
+    parser.add_argument('-m', '--model_path', nargs='?', type=str, default='fcn8s_pascal_1_26.pkl',
                         help='Path to the saved model')
-    parser.add_argument('--dataset', nargs='?', type=str, default='pascal', 
+    parser.add_argument('-d','--dataset', nargs='?', type=str, default='pascal',
                         help='Dataset to use [\'pascal, camvid, ade20k etc\']')
-    parser.add_argument('--img_path', nargs='?', type=str, default=None, 
+    parser.add_argument('-i', '--img_path', nargs='?', type=str, default=None,
                         help='Path of the input image')
-    parser.add_argument('--out_path', nargs='?', type=str, default=None, 
+    parser.add_argument('-o', '--out_path', nargs='?', type=str, default=None,
                         help='Path of the output segmap')
     args = parser.parse_args()
     test(args)
