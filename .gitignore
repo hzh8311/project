@@ -6,8 +6,11 @@ __pycache__/
 # data dir
 data/
 
+# model
+checkpoints/
 # trainging script
 *.pbs
+tags
 
 # Torch Models
 *.pkl

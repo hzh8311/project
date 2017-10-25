@@ -24,9 +24,11 @@ def train(args):
     # Setup Dataloader
     data_loader = get_loader(args.dataset)
     data_path = get_data_path(args.dataset)
-    loader = data_loader(data_path, is_transform=True, img_size=(args.img_rows, args.img_cols))
-    n_classes = loader.n_classes
-    trainloader = data.DataLoader(loader, batch_size=args.batch_size, num_workers=4, shuffle=True)
+    train_loader = data_loader(data_path, 'train', is_transform=True, img_size=(args.img_rows, args.img_cols))
+    val_loader = data_loader(data_path, 'val', is_transform=True, img_size=(args.img_rows, args.img_cols))
+    n_classes = train_loader.n_classes
+    trainloader = data.DataLoader(train_loader, batch_size=args.batch_size, num_workers=4, shuffle=True)
+    valloader = data.DataLoader(val_loader, batch_size=args.batch_size, num_workers=4, shuffle=True)
 
     # Setup visdom for visualization
     # vis = visdom.Visdom()
@@ -43,11 +45,12 @@ def train(args):
 
     if torch.cuda.is_available():
         model.cuda(0)
-        weight = torch.cuda.FloatTensor([0.00044, 0.92276, 0.07680])
-        test_image, test_segmap = loader[0]
+        # inverse classes frequency weight
+        # weight = torch.cuda.FloatTensor([0.00044, 0.92276, 0.07680])
+        test_image, test_segmap = train_loader[0]
         test_image = Variable(test_image.unsqueeze(0).cuda(0))
     else:
-        test_image, test_segmap = loader[0]
+        test_image, test_segmap = train_loader[0]
         test_image = Variable(test_image.unsqueeze(0))
 
     optimizer = torch.optim.SGD(model.parameters(), lr=args.l_rate, momentum=0.99, weight_decay=5e-4)
@@ -82,8 +85,8 @@ def train(args):
                 print("Epoch [%d/%d] Loss: %.4f" % (epoch+1, args.n_epoch, loss.data[0]))
 
         # test_output = model(test_image)
-        # predicted = loader.decode_segmap(test_output[0].cpu().data.numpy().argmax(0))
-        # target = loader.decode_segmap(test_segmap.numpy())
+        # predicted = train_loader.decode_segmap(test_output[0].cpu().data.numpy().argmax(0))
+        # target = train_loader.decode_segmap(test_segmap.numpy())
 
         # vis.image(test_image[0].cpu().data.numpy(), opts=dict(title='Input' + str(epoch)))
         # vis.image(np.transpose(target, [2,0,1]), opts=dict(title='GT' + str(epoch)))

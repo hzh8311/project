@@ -19,8 +19,8 @@ from ptsemseg.metrics import scores
 def test(args):
 
     # Setup image
-    print "Read Input Image from : {}".format(args.img_path)
     img = misc.imread(args.img_path)
+    print "Read Input Image from : {}".format(args.img_path)
 
     data_loader = get_loader(args.dataset)
     data_path = get_data_path(args.dataset)

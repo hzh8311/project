@@ -13,8 +13,7 @@ class ustcLoader(data.Dataset):
     def __init__(self, root, split="train", is_transform=False, img_size=(300, 500)):
         self.root = root
         self.split = split
-        self.img_size = img_size if isinstance(img_size, tuple)
-                                 else (img_size, img_size)
+        self.img_size = img_size if isinstance(img_size, tuple) else (img_size, img_size)
         self.is_transform = is_transform
         self.mean = np.load(os.path.join(self.root, 'mean.npy'))
         self.std = np.load(os.path.join(self.root, 'std.npy'))
