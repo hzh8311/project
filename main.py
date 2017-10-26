@@ -268,7 +268,7 @@ if __name__ == '__main__':
         '--arch',
         nargs='?',
         type=str,
-        default='fcn8s',
+        default='segnet',
         help='Architecture to use [\'fcn8s, unet, segnet etc\']')
     parser.add_argument(
         '-d',
