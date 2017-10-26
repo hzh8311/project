@@ -2,6 +2,7 @@ import os
 import sys
 import torch
 # import visdom
+import time
 import argparse
 import numpy as np
 import torch.nn as nn
@@ -19,16 +20,10 @@ from ptsemseg.loss import cross_entropy2d
 from ptsemseg.metrics import scores
 from lr_scheduling import *
 
-def train(args):
+def train(trainloader, model, criterion, flip=True):
 
-    # Setup Dataloader
-    data_loader = get_loader(args.dataset)
-    data_path = get_data_path(args.dataset)
-    train_loader = data_loader(data_path, 'train', is_transform=True, img_size=(args.img_rows, args.img_cols))
-    val_loader = data_loader(data_path, 'val', is_transform=True, img_size=(args.img_rows, args.img_cols))
-    n_classes = train_loader.n_classes
-    trainloader = data.DataLoader(train_loader, batch_size=args.batch_size, num_workers=4, shuffle=True)
-    valloader = data.DataLoader(val_loader, batch_size=args.batch_size, num_workers=4, shuffle=True)
+    model.train()
+    end = time.time()
 
     # Setup visdom for visualization
     # vis = visdom.Visdom()
@@ -40,60 +35,47 @@ def train(args):
     #                                  title='Training Loss',
     #                                  legend=['Loss']))
 
-    # Setup Model
-    model = get_model(args.arch, n_classes)
 
-    if torch.cuda.is_available():
-        model.cuda(0)
-        # inverse classes frequency weight
-        # weight = torch.cuda.FloatTensor([0.00044, 0.92276, 0.07680])
-        test_image, test_segmap = train_loader[0]
-        test_image = Variable(test_image.unsqueeze(0).cuda(0))
-    else:
-        test_image, test_segmap = train_loader[0]
-        test_image = Variable(test_image.unsqueeze(0))
+    bar = Bar('Processing', max=len(trainloader))
+    for i, (images, labels) in enumerate(trainloader):
+        date_time.update(time.time() - end)
+        if torch.cuda.is_available():
+            images = Variable(images.cuda(0))
+            labels = Variable(labels.cuda(0))
+        else:
+            images = Variable(images)
+            labels = Variable(labels)
 
-    optimizer = torch.optim.SGD(model.parameters(), lr=args.l_rate, momentum=0.99, weight_decay=5e-4)
+        iter = len(trainloader)*epoch + i
+        poly_lr_scheduler(optimizer, args.l_rate, iter)
 
-    for epoch in range(args.n_epoch):
-        for i, (images, labels) in enumerate(trainloader):
-            if torch.cuda.is_available():
-                images = Variable(images.cuda(0))
-                labels = Variable(labels.cuda(0))
-            else:
-                images = Variable(images)
-                labels = Variable(labels)
+        optimizer.zero_grad()
+        outputs = model(images)
 
-            iter = len(trainloader)*epoch + i
-            poly_lr_scheduler(optimizer, args.l_rate, iter)
+        loss = cross_entropy2d(outputs, labels, weight=weight)
 
-            optimizer.zero_grad()
-            outputs = model(images)
+        loss.backward()
+        optimizer.step()
 
-            loss = cross_entropy2d(outputs, labels, weight=weight)
+        # vis.line(
+        #     X=torch.ones((1, 1)).cpu() * i,
+        #     Y=torch.Tensor([loss.data[0]]).unsqueeze(0).cpu(),
+        #     win=loss_window,
+        #     update='append')
 
-            loss.backward()
-            optimizer.step()
+        if (i+1) % 20 == 0:
+            print("Epoch [%d/%d] Loss: %.4f" % (epoch+1, args.n_epoch, loss.data[0]))
 
-            # vis.line(
-            #     X=torch.ones((1, 1)).cpu() * i,
-            #     Y=torch.Tensor([loss.data[0]]).unsqueeze(0).cpu(),
-            #     win=loss_window,
-            #     update='append')
+    # test_output = model(test_image)
+    # predicted = train_loader.decode_segmap(test_output[0].cpu().data.numpy().argmax(0))
+    # target = train_loader.decode_segmap(test_segmap.numpy())
 
-            if (i+1) % 20 == 0:
-                print("Epoch [%d/%d] Loss: %.4f" % (epoch+1, args.n_epoch, loss.data[0]))
-
-        # test_output = model(test_image)
-        # predicted = train_loader.decode_segmap(test_output[0].cpu().data.numpy().argmax(0))
-        # target = train_loader.decode_segmap(test_segmap.numpy())
-
-        # vis.image(test_image[0].cpu().data.numpy(), opts=dict(title='Input' + str(epoch)))
-        # vis.image(np.transpose(target, [2,0,1]), opts=dict(title='GT' + str(epoch)))
-        # vis.image(np.transpose(predicted, [2,0,1]), opts=dict(title='Predicted' + str(epoch)))
-        if not os.path.exists('checkpoints'):
-            os.makedirs('checkpoints')
-        torch.save(model, "checkpoints/{}_{}_{}_{}.pkl".format(args.arch, args.dataset, args.feature_scale, epoch))
+    # vis.image(test_image[0].cpu().data.numpy(), opts=dict(title='Input' + str(epoch)))
+    # vis.image(np.transpose(target, [2,0,1]), opts=dict(title='GT' + str(epoch)))
+    # vis.image(np.transpose(predicted, [2,0,1]), opts=dict(title='Predicted' + str(epoch)))
+    if not os.path.exists('checkpoints'):
+        os.makedirs('checkpoints')
+    torch.save(model, "checkpoints/{}_{}_{}_{}.pkl".format(args.arch, args.dataset, args.feature_scale, epoch))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Hyperparams')
