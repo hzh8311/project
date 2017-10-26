@@ -1,3 +1,4 @@
+# Python program for project
 import os
 import sys
 import time
@@ -20,12 +21,14 @@ from ptsemseg.loader import get_loader, get_data_path
 from ptsemseg.loss import cross_entropy2d
 from ptsemseg.metrics import scores
 from ptsemseg.utils import AverageMeter
-from ptsemseg.loggers import Logger
+from ptsemseg.loggers import Logger, savefig
 from ptsemseg.models.utils import save_checkpoint, adjust_learning_rate
 from lr_scheduling import *
 
-sys.path.append("/data5/huangzh/DAN-torch/pose/progress")
+sys.path.append("/data5/huangzh/sea-torch/pose/progress")
 from progress.bar import Bar as Bar
+
+best_acc = 0
 
 
 def main(args):
@@ -53,16 +56,32 @@ def main(args):
     if not os.path.isdir(args.checkpoint):
         os.makedirs(args.checkpoint)
 
+    title = args.dataset + '-' + args.arch
     print("Create model {}-{}".format(args.arch, args.dataset))
-    model = get_model(args.arch, n_classes)
+    model = get_model(args.arch, n_classes, se=args.se)
+    # optimizer = torch.optim.SGD(
+    #     model.parameters(), lr=args.l_rate, momentum=0.99, weight_decay=5e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.l_rate)
+    #, momentum=args.momentum, weight_decay=args.weight_decay)
+
+    if args.resume:
+        if os.path.isfile(args.resume):
+            print("=> loading checkpoint '{}'".format(args.resume))
+            checkpoint = torch.load(args.resume)
+            args.start_epoch = checkpoint['epoch']
+            best_acc = checkpoint['best_acc']
+            model.load_state_dict(checkpoint['state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer'])
+            print("=> loaded checkpoint '{}' (epoch {})".format(
+                args.resume, checkpoint['epoch']))
+            # logger = Logger(
+            #     os.path.join(args.checkpoint, 'log.txt'), title=title, resume=True)
+        else:
+            print("=> no checkpoint found at '{}'".format(args.resume))
 
     if torch.cuda.is_available():
         model.cuda(0)
 
-    optimizer = torch.optim.SGD(
-        model.parameters(), lr=args.l_rate, momentum=0.99, weight_decay=5e-4)
-
-    title = args.dataset + '-' + args.arch
     logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title)
     logger.set_names(
         ['Epoch', 'LR', 'Train Loss', 'Val Loss', 'Train MIOU', 'Val MIOU'])
@@ -75,11 +94,7 @@ def main(args):
         print('Evaluation only')
         score, class_iou = validate(valloader, model, cross_entropy2d,
                                     n_classes, args.flip)
-        for k, v in score.items():
-            print k, v
-
-        for i in range(n_classes):
-            print i, class_iou[i]
+        return
 
     lr = args.l_rate
     for epoch in range(args.n_epoch):
@@ -89,8 +104,8 @@ def main(args):
         print('Epoch: %d | LR: %.8f' % (epoch + 1, lr))
         train_loss, train_acc = train(trainloader, model, cross_entropy2d,
                                       optimizer, n_classes, args.flip)
-        valid_loss, valid_acc = vaildate(valloader, model, cross_entropy2d,
-                                         optimizer, n_classes, args.flip)
+        valid_loss, valid_acc = validate(valloader, model, cross_entropy2d,
+                                         n_classes, args.flip)
 
         logger.append(
             [epoch + 1, lr, train_loss, valid_loss, train_acc, valid_acc])
@@ -108,7 +123,7 @@ def main(args):
             is_best,
             checkpoint=args.checkpoint)
     logger.close()
-    logger.plot(['Train Acc', 'Val Acc'])
+    logger.plot(['Train MIOU', 'Val MIOU'])
     savefig(os.path.join(args.checkpoint, 'log.eps'))
 
 
@@ -139,16 +154,18 @@ def train(trainloader, model, criterion, optimizer, num_classes=3, flip=True):
             flip_outputs_var = model(flip_images_var)
             flip_outputs_var = flip_back(flip_outputs_var.data.cpu())
 
-        loss = criterion(outputs, labels)
+        # weight = torch.cuda.FloatTensor([0.1, 0.5, 0.4])
+        weight = None
+        loss = criterion(outputs, labels, weight)
 
         pred = np.squeeze(outputs.data.max(1)[1].cpu().numpy(), axis=1)
         gt = labels.data.cpu().numpy()
 
         score, class_iou = scores(gt, pred, num_classes)
-        acc = score.mean_iu
+        acc = score['Mean IoU : \t']
 
-        losses.update(loss.data[0], images.size[0])
-        acces.update(acc.data[0], images.size[0])
+        losses.update(loss.data[0], images.size(0))
+        acces.update(acc, images.size(0))
 
         optimizer.zero_grad()
         loss.backward()
@@ -190,6 +207,8 @@ def validate(valloader, model, criterion, num_classes, flip=True):
     acces = AverageMeter()
     model.eval()
 
+    end = time.time()
+
     bar = Bar('Processing', max=len(valloader))
     gts, preds = [], []
     for i, (images, labels) in enumerate(valloader):
@@ -210,6 +229,10 @@ def validate(valloader, model, criterion, num_classes, flip=True):
             flip_outputs_var = model(flip_images_var)
             flip_outputs_var = flip_back(flip_outputs_var.data.cpu())
 
+        # weight = torch.cuda.FloatTensor([0.1, 0.5, 0.4])
+        weight = None
+        loss = criterion(outputs, labels, weight)
+
         pred = np.squeeze(outputs.data.max(1)[1].cpu().numpy(), axis=1)
         gt = labels.data.cpu().numpy()
 
@@ -217,19 +240,18 @@ def validate(valloader, model, criterion, num_classes, flip=True):
             gts.append(gt_)
             preds.append(pred_)
 
-        loss = criterion(outputs, labels)
         score, class_iou = scores(gt, pred, num_classes)
-        acc = score.mean_iu
+        acc = score['Mean IoU : \t']
 
-        losses.update(loss.data[0], images.size[0])
-        acces.update(acc.data[0], images.size[0])
+        losses.update(loss.data[0], images.size(0))
+        acces.update(acc, images.size(0))
 
         batch_time.update(time.time() - end)
         end = time.time()
 
         bar.suffix = '({batch}/{size}) Data: {data:.6f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f} | Acc: {acc: .4f}'.format(
             batch=i + 1,
-            size=len(trainloader),
+            size=len(valloader),
             data=data_time.val,
             bt=batch_time.val,
             total=bar.elapsed_td,
@@ -240,29 +262,19 @@ def validate(valloader, model, criterion, num_classes, flip=True):
 
     bar.finish()
 
-    score, class_iou = scores(gts, preds, n_class=n_classes)
+    score, class_iou = scores(gts, preds, n_class=3)
 
     for k, v in score.items():
         print k, v
 
-    for i in range(n_classes):
+    for i in range(num_classes):
         print i, class_iou[i]
-
-    # test_output = model(test_image)
-    # predicted = train_loader.decode_segmap(test_output[0].cpu().data.numpy().argmax(0))
-    # target = train_loader.decode_segmap(test_segmap.numpy())
-
-    # vis.image(test_image[0].cpu().data.numpy(), opts=dict(title='Input' + str(epoch)))
-    # vis.image(np.transpose(target, [2,0,1]), opts=dict(title='GT' + str(epoch)))
-    # vis.image(np.transpose(predicted, [2,0,1]), opts=dict(title='Predicted' + str(epoch)))
-    # if not os.path.exists('checkpoints'):
-    #     os.makedirs('checkpoints')
-    # torch.save(model, "checkpoints/{}_{}_{}_{}.pkl".format(args.arch, args.dataset, args.feature_scale, epoch))
     return losses.avg, acces.avg
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Hyperparams')
+    parser.add_argument('--resume', type=str, default='', help='the model path')
     parser.add_argument(
         '-a',
         '--arch',
@@ -299,7 +311,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '-b', '--batch_size', nargs='?', type=int, default=8, help='Batch Size')
     parser.add_argument(
-        '--l_rate', nargs='?', type=float, default=1e-5, help='Learning Rate')
+        '--l_rate', nargs='?', type=float, default=0.001, help='Learning Rate')
     parser.add_argument(
         '--feature_scale',
         nargs='?',
@@ -326,7 +338,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '-c',
         '--checkpoint',
-        default='checkpoint',
+        default='checkpoints',
         type=str,
         metavar='PATH',
         help='path to save checkpoint (default: checkpoint)')
@@ -336,5 +348,20 @@ if __name__ == '__main__':
         dest='evaluate',
         action='store_true',
         help='evaluate model on validation set')
+    parser.add_argument('--se', action='store_true', help="has SE units or not")
+    parser.add_argument(
+        '-i',
+        '--img_path',
+        nargs='?',
+        type=str,
+        default=None,
+        help='Path of the input image')
+    parser.add_argument(
+        '-o',
+        '--out_path',
+        nargs='?',
+        type=str,
+        default=None,
+        help='Path of the output segmap')
     args = parser.parse_args()
     main(args)

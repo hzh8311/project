@@ -8,7 +8,7 @@ from ptsemseg.models.linknet import *
 
 
 
-def get_model(name, n_classes):
+def get_model(name, n_classes, se=False):
     model = _get_model_instance(name)
 
     if name in ['fcn32s', 'fcn16s', 'fcn8s']:
@@ -17,8 +17,13 @@ def get_model(name, n_classes):
         model.init_vgg16_params(vgg16)
 
     elif name == 'segnet':
-        model = model(n_classes=n_classes,
-                      is_unpooling=True)
+        if se:
+            model = model(n_classes=n_classes,
+                          is_unpooling=True, se=True)
+        else:
+            model = model(n_classes=n_classes,
+                          is_unpooling=True)
+
         vgg16 = models.vgg16(pretrained=False)
         # model.init_vgg16_params(vgg16)
 
@@ -27,6 +32,9 @@ def get_model(name, n_classes):
                       is_batchnorm=True,
                       in_channels=3,
                       is_deconv=True)
+    elif name == 'linknet':
+        model = model(n_classes=n_classes,
+                    feature_scale=4)
     else:
         raise 'Model {} not available'.format(name)
 

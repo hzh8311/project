@@ -4,6 +4,8 @@ import torch
 import torchvision
 import numpy as np
 import scipy.misc as m
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 from torch.utils import data
@@ -15,14 +17,22 @@ class ustcLoader(data.Dataset):
         self.split = split
         self.img_size = img_size if isinstance(img_size, tuple) else (img_size, img_size)
         self.is_transform = is_transform
-        self.mean = np.load(os.path.join(self.root, 'mean.npy'))
-        self.std = np.load(os.path.join(self.root, 'std.npy'))
+        if self.img_size == (300, 500):
+            self.mean = np.load(os.path.join(self.root, 'mean.npy'))
+            self.std = np.load(os.path.join(self.root, 'std.npy'))
+        else:
+            self.mean = np.load(os.path.join(self.root, 'mean224.npy'))
+            self.std = np.load(os.path.join(self.root, 'std224.npy'))
         self.n_classes = 3
         self.files = collections.defaultdict(list)
 
         for split in ["train", "test", "val"]:
-            file_list = [_ for _ in os.listdir(root + split)
-                         if not _.endswith('_gt.jpg') and _.startswith('p')]
+            if self.img_size == (300, 500):
+                file_list = [_ for _ in os.listdir(root + split)
+                            if not _.endswith('_gt.jpg') and _.startswith('p')]
+            else: # 300x300 image -> 224x224 image
+                file_list = [_ for _ in os.listdir(root + split)
+                            if not _.endswith('_gt.jpg') and _.startswith('s')]
             self.files[split] = file_list
 
     def __len__(self):
@@ -42,6 +52,7 @@ class ustcLoader(data.Dataset):
         if self.is_transform:
             img, lbl = self.transform(img, lbl)
 
+        # print(np.unique(lbl.numpy()))
         return img, lbl
 
     def transform(self, img, lbl):
@@ -63,7 +74,7 @@ class ustcLoader(data.Dataset):
 
     def decode_segmap(self, temp, plot=False):
         background = [0, 0, 255]
-        scratch = [0, 128, 128]
+        scratch = [0, 255, 0]
         foreground = [255, 0, 0]
 
         label_colours = np.array([background, scratch, foreground])
@@ -86,16 +97,17 @@ class ustcLoader(data.Dataset):
             return rgb
 
 if __name__ == '__main__':
-    local_path = '/data5/huangzh/project/data'
+    local_path = '/data5/huangzh/project/data/'
     dst = ustcLoader(local_path, is_transform=True)
     trainloader = data.DataLoader(dst, batch_size=4)
     for i, data in enumerate(trainloader):
         imgs, labels = data
-        if i == 0:
-            img = torchvision.utils.make_grid(imgs).numpy()
-            img = np.transpose(img, (1, 2, 0))
-            img = img[:, :, ::-1]
-            plt.imshow(img)
-            plt.show()
-            plt.imshow(dst.decode_segmap(labels.numpy()[i]))
-            plt.show()
+        # if i == 0:
+            # img = torchvision.utils.make_grid(imgs).numpy()
+            # img = np.transpose(img, (1, 2, 0))
+            # img = img[:, :, ::-1]
+            # plt.imshow(img)
+            # plt.show()
+            # plt.imshow(dst.decode_segmap(labels.numpy()[i]))
+            # plt.show()
+            # print(np.unique(labels[0].numpy()))

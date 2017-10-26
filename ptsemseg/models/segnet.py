@@ -7,12 +7,18 @@ from utils import *
 
 class segnet(nn.Module):
 
-    def __init__(self, n_classes=21, in_channels=3, is_unpooling=True):
+    def __init__(self, n_classes=21, in_channels=3, is_unpooling=True, se=False):
         super(segnet, self).__init__()
 
         self.in_channels = in_channels
         self.is_unpooling = is_unpooling
+        self.has_se = se
 
+        if self.has_se:
+            self.se1 = seLayer(64)
+            self.se2 = seLayer(128)
+            self.se3 = seLayer(256)
+            self.se4 = seLayer(512)
         self.down1 = segnetDown2(self.in_channels, 64)
         self.down2 = segnetDown2(64, 128)
         self.down3 = segnetDown3(128, 256)
@@ -28,15 +34,33 @@ class segnet(nn.Module):
     def forward(self, inputs):
 
         down1, indices_1, unpool_shape1 = self.down1(inputs)
+        if self.has_se:
+            down1 = self.se1(down1)
         down2, indices_2, unpool_shape2 = self.down2(down1)
+        if self.has_se:
+            down2 = self.se2(down2)
         down3, indices_3, unpool_shape3 = self.down3(down2)
+        if self.has_se:
+            down3 = self.se3(down3)
         down4, indices_4, unpool_shape4 = self.down4(down3)
+        if self.has_se:
+            down4 = self.se4(down4)
         down5, indices_5, unpool_shape5 = self.down5(down4)
+        if self.has_se:
+            down5 = self.se4(down5)
 
         up5 = self.up5(down5, indices_5, unpool_shape5)
+        if self.has_se:
+            up5 = self.se4(up5)
         up4 = self.up4(up5, indices_4, unpool_shape4)
+        if self.has_se:
+            up4 = self.se3(up4)
         up3 = self.up3(up4, indices_3, unpool_shape3)
+        if self.has_se:
+            up3 = self.se2(up3)
         up2 = self.up2(up3, indices_2, unpool_shape2)
+        if self.has_se:
+            up2 = self.se1(up2)
         up1 = self.up1(up2, indices_1, unpool_shape1)
 
         return up1
